@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -26,13 +27,18 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.google.firebase.firestore.FirebaseFirestore
 import java.io.ByteArrayOutputStream
+import java.text.DecimalFormat
+import java.text.DecimalFormatSymbols
+import java.util.Locale
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -65,7 +71,6 @@ fun EcomerScreen() {
     var editingProductId by remember { mutableStateOf<String?>(null) }
     var productList by remember { mutableStateOf<List<Product>>(emptyList()) }
 
-    // Launcher chọn ảnh từ máy và chuyển sang Base64
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
@@ -145,8 +150,18 @@ fun EcomerScreen() {
 
         OutlinedTextField(
             value = gia,
-            onValueChange = { gia = it },
-            label = { Text("Giá sản phẩm") },
+            onValueChange = { input ->
+                val digitsOnly = input.text.filter { it.isDigit() }
+                if (digitsOnly.length <= 12) {
+                    val formatted = formatCurrency(digitsOnly)
+                    gia = TextFieldValue(
+                        text = formatted,
+                        selection = TextRange(formatted.length)
+                    )
+                }
+            },
+            label = { Text("Giá sản phẩm (VNĐ)") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             modifier = Modifier.fillMaxWidth()
         )
         Spacer(modifier = Modifier.height(8.dp))
@@ -177,7 +192,8 @@ fun EcomerScreen() {
 
         Button(
             onClick = {
-                val giaDouble = gia.text.toDoubleOrNull() ?: 0.0
+                val cleanGiaString = gia.text.replace(".", "")
+                val giaDouble = cleanGiaString.toDoubleOrNull() ?: 0.0
                 if (tenSp.text.isBlank() || loaiSp.text.isBlank()) {
                     Toast.makeText(context, "Vui lòng nhập đủ thông tin!", Toast.LENGTH_SHORT).show()
                     return@Button
@@ -283,7 +299,7 @@ fun EcomerScreen() {
 
                         Column(modifier = Modifier.weight(1f)) {
                             Text(text = "Tên sp: ${product.tenSp}", fontWeight = FontWeight.Medium)
-                            Text(text = "Giá sp: ${product.gia.toLong()}")
+                            Text(text = "Giá sp: ${formatCurrency(product.gia.toLong().toString())} đ")
                             Text(text = "Loại sp: ${product.loaiSp}")
                         }
 
@@ -295,7 +311,10 @@ fun EcomerScreen() {
                                 editingProductId = product.id
                                 tenSp = TextFieldValue(product.tenSp)
                                 loaiSp = TextFieldValue(product.loaiSp)
-                                gia = TextFieldValue(if (product.gia == 0.0) "" else product.gia.toLong().toString())
+                                gia = TextFieldValue(
+                                    if (product.gia == 0.0) "" else formatCurrency(product.gia.toLong().toString()),
+                                    selection = TextRange(formatCurrency(product.gia.toLong().toString()).length)
+                                )
                                 currentImageUrl = product.imageUrl
                                 selectedImageName = ""
                             }) {
@@ -316,6 +335,13 @@ fun EcomerScreen() {
             }
         }
     }
+}
+
+fun formatCurrency(input: String): String {
+    val cleanString = input.replace(".", "").replace(",", "").trim()
+    val parsed = cleanString.toLongOrNull() ?: return ""
+    val formatter = DecimalFormat("#,###", DecimalFormatSymbols(Locale.GERMANY))
+    return formatter.format(parsed)
 }
 
 fun decodeBase64ToBitmap(base64Str: String): Bitmap? {
