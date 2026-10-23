@@ -30,10 +30,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import java.io.ByteArrayOutputStream
 import java.text.DecimalFormat
@@ -49,7 +51,26 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    EcomerScreen()
+                    val auth = remember { FirebaseAuth.getInstance() }
+                    var currentUser by remember { mutableStateOf(auth.currentUser) }
+
+                    if (currentUser != null) {
+                        // Kiểm tra quyền: nếu email là admin@gmail.com thì là Admin, còn lại là Khách hàng
+                        val isAdmin = currentUser?.email.equals("admin@gmail.com", ignoreCase = true)
+
+                        EcomerScreen(
+                            userEmail = currentUser?.email ?: "",
+                            isAdmin = isAdmin,
+                            onLogout = {
+                                auth.signOut()
+                                currentUser = null
+                            }
+                        )
+                    } else {
+                        LoginScreen(onLoginSuccess = {
+                            currentUser = auth.currentUser
+                        })
+                    }
                 }
             }
         }
@@ -57,7 +78,112 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun EcomerScreen() {
+fun LoginScreen(onLoginSuccess: () -> Unit) {
+    val context = LocalContext.current
+    val auth = remember { FirebaseAuth.getInstance() }
+
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var isLoading by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(
+            text = "ĐĂNG NHẬP ECOMER",
+            fontSize = 24.sp,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary
+        )
+        Spacer(modifier = Modifier.height(24.dp))
+
+        OutlinedTextField(
+            value = email,
+            onValueChange = { email = it },
+            label = { Text("Email") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+
+        OutlinedTextField(
+            value = password,
+            onValueChange = { password = it },
+            label = { Text("Mật khẩu") },
+            visualTransformation = PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(20.dp))
+
+        if (isLoading) {
+            CircularProgressIndicator()
+        } else {
+            Button(
+                onClick = {
+                    if (email.isBlank() || password.isBlank()) {
+                        Toast.makeText(context, "Vui lòng nhập đủ email và mật khẩu", Toast.LENGTH_SHORT).show()
+                        return@Button
+                    }
+                    isLoading = true
+                    auth.signInWithEmailAndPassword(email.trim(), password.trim())
+                        .addOnSuccessListener {
+                            isLoading = false
+                            Toast.makeText(context, "Đăng nhập thành công!", Toast.LENGTH_SHORT).show()
+                            onLoginSuccess()
+                        }
+                        .addOnFailureListener {
+                            isLoading = false
+                            Toast.makeText(context, "Lỗi đăng nhập: ${it.message}", Toast.LENGTH_SHORT).show()
+                        }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+            ) {
+                Text("ĐĂNG NHẬP")
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            OutlinedButton(
+                onClick = {
+                    if (email.isBlank() || password.length < 6) {
+                        Toast.makeText(context, "Email hợp lệ và mật khẩu tối thiểu 6 ký tự", Toast.LENGTH_SHORT).show()
+                        return@OutlinedButton
+                    }
+                    isLoading = true
+                    auth.createUserWithEmailAndPassword(email.trim(), password.trim())
+                        .addOnSuccessListener {
+                            isLoading = false
+                            Toast.makeText(context, "Đăng ký thành công! Đã đăng nhập.", Toast.LENGTH_SHORT).show()
+                            onLoginSuccess()
+                        }
+                        .addOnFailureListener {
+                            isLoading = false
+                            Toast.makeText(context, "Lỗi đăng ký: ${it.message}", Toast.LENGTH_SHORT).show()
+                        }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+            ) {
+                Text("ĐĂNG KÝ TÀI KHOẢN")
+            }
+        }
+    }
+}
+
+@Composable
+fun EcomerScreen(
+    userEmail: String,
+    isAdmin: Boolean,
+    onLogout: () -> Unit
+) {
     val context = LocalContext.current
     val db = remember { FirebaseFirestore.getInstance() }
 
@@ -125,121 +251,143 @@ fun EcomerScreen() {
             .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(
-            text = "Dữ liệu sản phẩm",
-            fontSize = 24.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(bottom = 16.dp)
-        )
-
-        OutlinedTextField(
-            value = tenSp,
-            onValueChange = { tenSp = it },
-            label = { Text("Tên sản phẩm") },
-            modifier = Modifier.fillMaxWidth()
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-
-        OutlinedTextField(
-            value = loaiSp,
-            onValueChange = { loaiSp = it },
-            label = { Text("Loại sản phẩm") },
-            modifier = Modifier.fillMaxWidth()
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-
-        OutlinedTextField(
-            value = gia,
-            onValueChange = { input ->
-                val digitsOnly = input.text.filter { it.isDigit() }
-                if (digitsOnly.length <= 12) {
-                    val formatted = formatCurrency(digitsOnly)
-                    gia = TextFieldValue(
-                        text = formatted,
-                        selection = TextRange(formatted.length)
-                    )
-                }
-            },
-            label = { Text("Giá sản phẩm (VNĐ)") },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            modifier = Modifier.fillMaxWidth()
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp)
-                .border(1.dp, Color.Gray, RoundedCornerShape(4.dp))
-                .clickable { launcher.launch("image/*") }
-                .padding(horizontal = 12.dp),
-            contentAlignment = Alignment.CenterStart
+        // Thanh tiêu đề và thông tin tài khoản
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("📁", fontSize = 20.sp)
-                Spacer(modifier = Modifier.width(8.dp))
+            Column {
                 Text(
-                    text = if (selectedImageName.isNotBlank()) selectedImageName
-                    else if (currentImageUrl.isNotBlank()) "Đã có ảnh (Bấm để đổi)"
-                    else "Chọn ảnh từ thiết bị...",
-                    color = if (selectedImageName.isNotBlank() || currentImageUrl.isNotBlank()) Color.Black else Color.Gray,
-                    fontSize = 14.sp
+                    text = if (isAdmin) "Quản lý sản phẩm (Admin)" else "ECOMER",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isAdmin) Color(0xFF1976D2) else Color(0xFF388E3C)
                 )
+                Text(
+                    text = "$userEmail - Vai trò: ${if (isAdmin) "Quản trị viên" else "Khách hàng"}",
+                    fontSize = 12.sp,
+                    color = Color.DarkGray
+                )
+            }
+            TextButton(onClick = onLogout) {
+                Text("Đăng xuất", color = Color.Red)
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
-        Button(
-            onClick = {
-                val cleanGiaString = gia.text.replace(".", "")
-                val giaDouble = cleanGiaString.toDoubleOrNull() ?: 0.0
-                if (tenSp.text.isBlank() || loaiSp.text.isBlank()) {
-                    Toast.makeText(context, "Vui lòng nhập đủ thông tin!", Toast.LENGTH_SHORT).show()
-                    return@Button
+        // CHỈ ADMIN MỚI THẤY FORM NHẬP LIỆU THÊM/SỬA
+        if (isAdmin) {
+            OutlinedTextField(
+                value = tenSp,
+                onValueChange = { tenSp = it },
+                label = { Text("Tên sản phẩm") },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+
+            OutlinedTextField(
+                value = loaiSp,
+                onValueChange = { loaiSp = it },
+                label = { Text("Loại sản phẩm") },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+
+            OutlinedTextField(
+                value = gia,
+                onValueChange = { input ->
+                    val digitsOnly = input.text.filter { it.isDigit() }
+                    if (digitsOnly.length <= 12) {
+                        val formatted = formatCurrency(digitsOnly)
+                        gia = TextFieldValue(
+                            text = formatted,
+                            selection = TextRange(formatted.length)
+                        )
+                    }
+                },
+                label = { Text("Giá sản phẩm (VNĐ)") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp)
+                    .border(1.dp, Color.Gray, RoundedCornerShape(4.dp))
+                    .clickable { launcher.launch("image/*") }
+                    .padding(horizontal = 12.dp),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("📁", fontSize = 20.sp)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = if (selectedImageName.isNotBlank()) selectedImageName
+                        else if (currentImageUrl.isNotBlank()) "Đã có ảnh (Bấm để đổi)"
+                        else "Chọn ảnh từ thiết bị...",
+                        color = if (selectedImageName.isNotBlank() || currentImageUrl.isNotBlank()) Color.Black else Color.Gray,
+                        fontSize = 14.sp
+                    )
                 }
+            }
 
-                val productData = hashMapOf(
-                    "tenSp" to tenSp.text,
-                    "loaiSp" to loaiSp.text,
-                    "gia" to giaDouble,
-                    "imageUrl" to currentImageUrl
-                )
+            Spacer(modifier = Modifier.height(12.dp))
 
-                if (editingProductId == null) {
-                    db.collection("products").add(productData)
-                        .addOnSuccessListener {
-                            Toast.makeText(context, "Thêm thành công!", Toast.LENGTH_SHORT).show()
-                        }
-                        .addOnFailureListener {
-                            Toast.makeText(context, "Lỗi thêm: ${it.message}", Toast.LENGTH_SHORT).show()
-                        }
-                } else {
-                    db.collection("products").document(editingProductId!!).update(productData as Map<String, Any>)
-                        .addOnSuccessListener {
-                            Toast.makeText(context, "Cập nhật thành công!", Toast.LENGTH_SHORT).show()
-                            editingProductId = null
-                        }
-                        .addOnFailureListener {
-                            Toast.makeText(context, "Lỗi sửa: ${it.message}", Toast.LENGTH_SHORT).show()
-                        }
-                }
+            Button(
+                onClick = {
+                    val cleanGiaString = gia.text.replace(".", "")
+                    val giaDouble = cleanGiaString.toDoubleOrNull() ?: 0.0
+                    if (tenSp.text.isBlank() || loaiSp.text.isBlank()) {
+                        Toast.makeText(context, "Vui lòng nhập đủ thông tin!", Toast.LENGTH_SHORT).show()
+                        return@Button
+                    }
 
-                tenSp = TextFieldValue("")
-                loaiSp = TextFieldValue("")
-                gia = TextFieldValue("")
-                selectedImageName = ""
-                currentImageUrl = ""
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(48.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2196F3))
-        ) {
-            Text(if (editingProductId == null) "THÊM SẢN PHẨM" else "LƯU CẬP NHẬT")
+                    val productData = hashMapOf(
+                        "tenSp" to tenSp.text,
+                        "loaiSp" to loaiSp.text,
+                        "gia" to giaDouble,
+                        "imageUrl" to currentImageUrl
+                    )
+
+                    if (editingProductId == null) {
+                        db.collection("products").add(productData)
+                            .addOnSuccessListener {
+                                Toast.makeText(context, "Thêm thành công!", Toast.LENGTH_SHORT).show()
+                            }
+                            .addOnFailureListener {
+                                Toast.makeText(context, "Lỗi thêm: ${it.message}", Toast.LENGTH_SHORT).show()
+                            }
+                    } else {
+                        db.collection("products").document(editingProductId!!).update(productData as Map<String, Any>)
+                            .addOnSuccessListener {
+                                Toast.makeText(context, "Cập nhật thành công!", Toast.LENGTH_SHORT).show()
+                                editingProductId = null
+                            }
+                            .addOnFailureListener {
+                                Toast.makeText(context, "Lỗi sửa: ${it.message}", Toast.LENGTH_SHORT).show()
+                            }
+                    }
+
+                    tenSp = TextFieldValue("")
+                    loaiSp = TextFieldValue("")
+                    gia = TextFieldValue("")
+                    selectedImageName = ""
+                    currentImageUrl = ""
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2196F3))
+            ) {
+                Text(if (editingProductId == null) "THÊM SẢN PHẨM" else "LƯU CẬP NHẬT")
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
         }
-
-        Spacer(modifier = Modifier.height(20.dp))
 
         Text(
             text = "Danh sách sản phẩm:",
@@ -303,31 +451,34 @@ fun EcomerScreen() {
                             Text(text = "Loại sp: ${product.loaiSp}")
                         }
 
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            IconButton(onClick = {
-                                editingProductId = product.id
-                                tenSp = TextFieldValue(product.tenSp)
-                                loaiSp = TextFieldValue(product.loaiSp)
-                                gia = TextFieldValue(
-                                    if (product.gia == 0.0) "" else formatCurrency(product.gia.toLong().toString()),
-                                    selection = TextRange(formatCurrency(product.gia.toLong().toString()).length)
-                                )
-                                currentImageUrl = product.imageUrl
-                                selectedImageName = ""
-                            }) {
-                                Text("✏️", fontSize = 18.sp)
-                            }
+                        // chỉ admin mới dc quyền sửa xóa sp
+                        if (isAdmin) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                IconButton(onClick = {
+                                    editingProductId = product.id
+                                    tenSp = TextFieldValue(product.tenSp)
+                                    loaiSp = TextFieldValue(product.loaiSp)
+                                    gia = TextFieldValue(
+                                        if (product.gia == 0.0) "" else formatCurrency(product.gia.toLong().toString()),
+                                        selection = TextRange(formatCurrency(product.gia.toLong().toString()).length)
+                                    )
+                                    currentImageUrl = product.imageUrl
+                                    selectedImageName = ""
+                                }) {
+                                    Text("✏️", fontSize = 18.sp)
+                                }
 
-                            IconButton(onClick = {
-                                db.collection("products").document(product.id).delete()
-                                    .addOnSuccessListener {
-                                        Toast.makeText(context, "Đã xóa!", Toast.LENGTH_SHORT).show()
-                                    }
-                            }) {
-                                Text("🗑️", fontSize = 18.sp)
+                                IconButton(onClick = {
+                                    db.collection("products").document(product.id).delete()
+                                        .addOnSuccessListener {
+                                            Toast.makeText(context, "Đã xóa!", Toast.LENGTH_SHORT).show()
+                                        }
+                                }) {
+                                    Text("🗑️", fontSize = 18.sp)
+                                }
                             }
                         }
                     }

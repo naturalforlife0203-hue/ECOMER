@@ -6,14 +6,12 @@ plugins {
 
 android {
     namespace = "com.example.ecomer"
-    compileSdk {
-        version = release(37)
-    }
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.example.ecomer"
         minSdk = 24
-        targetSdk = 37
+        targetSdk = 35
         versionCode = 1
         versionName = "1.0"
 
@@ -55,4 +53,5 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)
     implementation("io.coil-kt:coil-compose:2.6.0")
+    implementation("com.google.firebase:firebase-auth-ktx:23.0.0")
 }
